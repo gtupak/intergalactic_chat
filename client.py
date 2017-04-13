@@ -22,9 +22,12 @@ def start_chat():
             continue
 
         server_msg = server_msg.split()
-        if server_msg[0] == '#prompt':
+        command = server_msg[0]
+        if command == '#prompt':
             usr_input = raw_input('%s ' % server_msg[1])
             clientSocket.send(usr_input)
+        elif command == '#info':
+            print '> %s' % ' '.join(server_msg[1:])
         else:
             print '> %s' % ' '.join(server_msg)
             clientSocket.close()
