@@ -91,7 +91,7 @@ ENV/
 # IntelliJ stuff
 
 # User-specific stuff:
-.idea/**/workspace.xml
+.idea/workspace.xml
 .idea/**/tasks.xml
 .idea/dictionaries
 

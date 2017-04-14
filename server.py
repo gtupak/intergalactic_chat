@@ -12,11 +12,10 @@ import datetime as time
 from socket import socket, AF_INET, SOCK_STREAM
 from socket import error as socket_error
 
-# TODO find out how to get rid of global here
-global SERVER_PORT, BLOCK_DURATION, TIMEOUT
+
 credentials_filename = 'credentials.txt'
-login_history = {}
-users_online = {}
+login_history = {} # dictionary of login history and sockets: {'yoda': {'time': time, 'socket' socket}
+users_online = [] # list of users ie ['yoda', 'luke']
 
 # dictionary storing usernames of people blocked due of incorrect passwords
 # stored as 'username': 'date_when_blocked'
@@ -39,7 +38,7 @@ def prompt_credentials(sock, username):
     if username in blocked_login_attempts:
         time_now = time.datetime.now()
         time_elapsed = time_now - blocked_login_attempts[username]
-        if time_elapsed.seconds > TIMEOUT:
+        if time_elapsed.seconds > BLOCK_DURATION:
             del blocked_login_attempts[username]
         else:
             blocked = True
@@ -60,18 +59,22 @@ def send_prompt(sock, msg):
 
 def serve_client(client_socket):
     while 1:
+
         message = client_socket.recv(1024)
         if message == '':
-            continue
+            client_socket.close()
+            break
 
         if message == 'logout':
             client_socket.send('#terminate client logs out')
-            # TODO do stuff when client logs out
+            client_socket.close()
+            break
         else:
             client_socket.send('#info Echo: ' + message)
 
 
 def accept_client(client_socket):
+    global login_history, users_online
     # prompt for credentials
     tries = 0
     accepted = False
@@ -95,11 +98,15 @@ def accept_client(client_socket):
         client_socket.close()
     elif accepted:
         # add user to login history
-        login_history[username] = time.datetime.now()
+        user_entry = {'time': time.datetime.now(), 'socket': client_socket}
+        login_history[username] = user_entry
         client_socket.send('#accepted Welcome to the intergalactic chat service!')
         thread = threading.Thread(target=serve_client, args=(client_socket,))
         thread.daemon = True
         thread.start()
+
+        # add to list of online users
+        users_online.append(username)
     else:
         blocked_login_attempts[username] = time.datetime.now()
         client_socket.send('#terminate Invalid Password. Your account has been blocked. ' +
@@ -108,6 +115,11 @@ def accept_client(client_socket):
 
 
 def start_server():
+    # dispatch thread to check active users
+    timeout_thread = threading.Thread(target=check_timeouts)
+    timeout_thread.daemon = True
+    timeout_thread.start()
+
     serverSocket = socket(AF_INET, SOCK_STREAM)
     try:
         serverSocket.bind(('', SERVER_PORT))
@@ -126,15 +138,31 @@ def start_server():
         print 'Intergalactic chat server is shutting down gracefully'
         serverSocket.close()
 
+
+def check_timeouts():
+    global users_online
+    while 1:
+        for user in users_online:
+            time_at_login = login_history[user]['time']
+            time_now = time.datetime.now()
+            time_elapsed = time_now - time_at_login
+
+            if time_elapsed.seconds > TIMEOUT:
+                # close connection to timed out user
+                user_sock = login_history[user]['socket']
+                user_sock.send('#terminate timeout')
+                user_sock.close()
+
+                users_online.remove(user)
+
+
 if __name__ == '__main__':
     cmdArgs = sys.argv
     if len(cmdArgs) != 4:
         print 'Usage: python server.py <server_port> <block_duration> <timeout>'
     else:
         # set variables
-        global SERVER_PORT, BLOCK_DURATION, TIMEOUT
         SERVER_PORT = int(cmdArgs[1])
         BLOCK_DURATION = cmdArgs[2]
-        TIMEOUT = cmdArgs[3]
+        TIMEOUT = int(cmdArgs[3])
         start_server()
-
