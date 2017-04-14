@@ -7,8 +7,8 @@ class StoppableThread(threading.Thread):
      the main thread when the server is shutting down 
     """
 
-    def __init__(self):
-        super(StoppableThread, self).__init__()
+    def __init__(self, target_function, sock):
+        super(StoppableThread, self).__init__(target=target_function, args=(sock,))
         self._stop = threading.Event()
 
     def stop(self):

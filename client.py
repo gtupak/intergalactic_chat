@@ -8,20 +8,25 @@ Client should the following in order:
 
 import sys, threading
 from socket import *
-from stoppableThread import *
 
-global SERVER_IP, SERVER_PORT
+connection_closed = False
 
 
-def listen_for_messages(sock):
-    try :
+def close_connection():
+    global connection_closed
+    connection_closed = True
+    sock.close()
+
+
+def listen_for_messages():
+    global connection_closed
+    try:
         while 1:
             server_msg = sock.recv(1024)
             if server_msg == '':
                 # empty string most likely means that the server has shut down
                 print 'PANIC: RECEIVED EMPTY STRING. SHUTTING DOWN'
-                sock.close()
-                break
+                raise KeyboardInterrupt
 
             server_msg = server_msg.split()
             command = server_msg[0]
@@ -32,52 +37,75 @@ def listen_for_messages(sock):
                 print '> %s' % ' '.join(server_msg[1:])
             elif command == '#accepted':
                 print '> %s' % ' '.join(server_msg[1:])
-                # start listening thread
-                listening_thread = StoppableThread(target=listen_for_messages, args=(sock,))
-                listening_thread.start()
 
                 # start chat thread
-                writing_thread = StoppableThread(target=write_msg_listener, args=(sock,))
+                writing_thread = threading.Thread(target=write_msg_listener)
+                writing_thread.daemon = True
                 writing_thread.start()
             elif command == '#terminate':
                 print '> %s\nClosing socket' % ' '.join(server_msg[1:])
-                sock.close()
+                close_connection()
+                break
             else:
                 # TODO figure out what to do when we don't recognize the command
                 print '> %s\nClosing socket' % ' '.join(server_msg)
-                sock.close()
+                close_connection()
+                break
     except KeyboardInterrupt:
         # shut down writing thread
-        writing_thread.stop()
+        print('Keyboard interrupt raised')
+        close_connection()
 
 
-def write_msg_listener(sock):
+def write_msg_listener():
     while 1:
-        if threading.current_thread().stopped():
-            break
+        # if connection_closed:
+        #     print 'writing thread finished'
+        #     break
 
         usr_input = raw_input()
+
+        if connection_closed:
+            return
+
         sock.send(usr_input)
 
 
-def start_chat():
-    sock = socket(AF_INET, SOCK_STREAM)
-    try:
-        sock.connect((SERVER_IP, SERVER_PORT))
-        thread = threading.Thread(target=listen_for_messages, args=(sock,))
-        thread.start()
 
-    except error:
-        print 'Server is shut down. Terminating client'
-        sock.close()
+
+# def start_chat(server_ip, server_port):
+#     sock = socket(AF_INET, SOCK_STREAM)
+#     try:
+#         sock.connect((server_ip, server_port))
+#         listening_thread = threading.Thread(target=listen_for_messages, args=(sock,))
+#         listening_thread.start()
+#         listening_thread.join()
+#
+#     except error:
+#         print 'Server is shut down. Terminating client'
+#         sock.close()
 
 if __name__ == '__main__':
     cmdArgs = sys.argv
     if len(cmdArgs) != 3:
         print 'Usage: client.py <server_IP> <server_port>'
     else:
-        global SERVER_IP, SERVER_PORT
-        # set variables
-        SERVER_IP = cmdArgs[1]
-        SERVER_PORT = int(cmdArgs[2])
-        start_chat()
+        # get arguments
+        server_ip = cmdArgs[1]
+        server_port = int(cmdArgs[2])
+
+        # start server
+        sock = socket(AF_INET, SOCK_STREAM)
+        try:
+            sock.connect((server_ip, server_port))
+
+            listening_thread = threading.Thread(target=listen_for_messages)
+            listening_thread.daemon = True
+            listening_thread.start()
+
+            listening_thread.join()
+            print 'listening thread finished'
+
+        except error:
+            print 'Server is shut down. Terminating client'
+            sock.close()

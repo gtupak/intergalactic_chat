@@ -61,7 +61,14 @@ def send_prompt(sock, msg):
 def serve_client(client_socket):
     while 1:
         message = client_socket.recv(1024)
-        client_socket.send('#info Echo: ' + message)
+        if message == '':
+            continue
+
+        if message == 'logout':
+            client_socket.send('#terminate client logs out')
+            # TODO do stuff when client logs out
+        else:
+            client_socket.send('#info Echo: ' + message)
 
 
 def accept_client(client_socket):
@@ -130,7 +137,4 @@ if __name__ == '__main__':
         BLOCK_DURATION = cmdArgs[2]
         TIMEOUT = cmdArgs[3]
         start_server()
-        # only shut down main thread when the threads are finished
-        while threading.active_count > 0:
-            time.sleep(0.1)
 
