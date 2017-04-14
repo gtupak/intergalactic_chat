@@ -7,14 +7,17 @@ Server should the following in order:
     - timeout
 """
 
-import sys
+import sys, threading
 import datetime as time
-from socket import *
+from socket import socket, AF_INET, SOCK_STREAM
+from socket import error as socket_error
 
 # TODO find out how to get rid of global here
 global SERVER_PORT, BLOCK_DURATION, TIMEOUT
 credentials_filename = 'credentials.txt'
 login_history = {}
+users_online = {}
+
 # dictionary storing usernames of people blocked due of incorrect passwords
 # stored as 'username': 'date_when_blocked'
 blocked_login_attempts = {}
@@ -49,9 +52,53 @@ def prompt_credentials(sock, username):
 
     return accepted, blocked
 
+
 def send_prompt(sock, msg):
     sock.send('#prompt %s' % msg)
     return
+
+
+def serve_client(client_socket):
+    while 1:
+        message = client_socket.recv(1024)
+        client_socket.send('#info Echo: ' + message)
+
+
+def accept_client(client_socket):
+    # prompt for credentials
+    tries = 0
+    accepted = False
+    blocked = False
+    send_prompt(client_socket, 'Username:')
+    username = client_socket.recv(1024)
+    while tries < 3:
+        accepted, blocked = prompt_credentials(client_socket, username)
+        if blocked:
+            break
+        if accepted:
+            break
+        else:
+            if tries + 1 != 3:
+                client_socket.send('#info Invalid Password. Please try again')
+            tries += 1
+
+    if blocked:
+        client_socket.send('#terminate Your account is blocked due to multiple login failures. ' +
+                              'Please try again later')
+        client_socket.close()
+    elif accepted:
+        # add user to login history
+        login_history[username] = time.datetime.now()
+        client_socket.send('#accepted Welcome to the intergalactic chat service!')
+        thread = threading.Thread(target=serve_client, args=(client_socket,))
+        thread.daemon = True
+        thread.start()
+    else:
+        blocked_login_attempts[username] = time.datetime.now()
+        client_socket.send('#terminate Invalid Password. Your account has been blocked. ' +
+                              'Please try again later')
+        client_socket.close()
+
 
 def start_server():
     serverSocket = socket(AF_INET, SOCK_STREAM)
@@ -62,35 +109,12 @@ def start_server():
 
         while 1:
             connectionSocket, addr = serverSocket.accept()
+            try:
+                accept_client(connectionSocket)
+            except socket_error:
+                if socket_error.errno == 32:  # broken pipe
+                    connectionSocket.close()
 
-            # prompt for credentials
-            tries = 0
-            accepted = False
-            blocked = False
-            send_prompt(connectionSocket, 'Username:')
-            username = connectionSocket.recv(1024)
-            while tries < 3:
-                accepted, blocked = prompt_credentials(connectionSocket, username)
-                if blocked:
-                    break
-                if accepted:
-                    break
-                else:
-                    if tries + 1 != 3:
-                        connectionSocket.send('#info Invalid Password. Please try again')
-                    tries += 1
-
-            if blocked:
-                connectionSocket.send('#terminate Your account is blocked due to multiple login failures. ' +
-                                      'Please try again later')
-                connectionSocket.close()
-            elif accepted:
-                connectionSocket.send('Welcome to the intergalactic chat service!')
-                connectionSocket.close()
-            else:
-                blocked_login_attempts[username] = time.datetime.now()
-                connectionSocket.send('#terminate Invalid Password. Your account has been blocked. Please try again later')
-                connectionSocket.close()
     except KeyboardInterrupt:
         print 'Intergalactic chat server is shutting down gracefully'
         serverSocket.close()
@@ -106,4 +130,7 @@ if __name__ == '__main__':
         BLOCK_DURATION = cmdArgs[2]
         TIMEOUT = cmdArgs[3]
         start_server()
+        # only shut down main thread when the threads are finished
+        while threading.active_count > 0:
+            time.sleep(0.1)
 
