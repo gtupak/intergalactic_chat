@@ -87,6 +87,14 @@ def serve_client(client_socket, user):
             client_socket.close()
             broadcast(user, '%s logged out' % user)
             break
+        elif message == 'whoelse':
+            for u_online in users_online:
+                if user == u_online:
+                    continue
+                send_info(client_socket, u_online)
+        elif message.split()[0] == 'broadcast':
+            message = ' '.join(message.split()[1:])
+            broadcast(user, message)
         else:
             client_socket.send('#info Echo: ' + message)
 
@@ -170,12 +178,12 @@ def check_timeouts():
 
             if time_elapsed.seconds > TIMEOUT:
                 # close connection to timed out user
-                print 'TIMEOUT: kicking out ' + user
                 user_sock = login_history[user]['socket']
                 user_sock.send('#terminate timeout')
                 user_sock.close()
 
                 users_online.remove(user)
+                broadcast(user, '%s was disconnected due to inactivity' % user)
 
 
 if __name__ == '__main__':
