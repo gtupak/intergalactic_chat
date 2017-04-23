@@ -31,7 +31,7 @@ def prompt_credentials(sock, username):
     accepted = False
     blocked = False
 
-    sock.send('#prompt Password:')
+    send_prompt(sock, 'Password:')
     password = sock.recv(1024)
 
     # check if blocked
@@ -57,7 +57,23 @@ def send_prompt(sock, msg):
     return
 
 
-def serve_client(client_socket):
+def send_info(sock, msg):
+    sock.send('#info %s' % msg)
+    return
+
+
+def broadcast(user_from, msg):
+    for user in users_online:
+        # do not broadcast to originated user
+        if user == user_from:
+            continue
+
+        sock = login_history[user]['socket']
+        send_info(sock, msg)
+    return
+
+
+def serve_client(client_socket, user):
     while 1:
 
         message = client_socket.recv(1024)
@@ -67,7 +83,9 @@ def serve_client(client_socket):
 
         if message == 'logout':
             client_socket.send('#terminate client logs out')
+            users_online.remove(user)
             client_socket.close()
+            broadcast(user, '%s logged out' % user)
             break
         else:
             client_socket.send('#info Echo: ' + message)
@@ -101,12 +119,15 @@ def accept_client(client_socket):
         user_entry = {'time': time.datetime.now(), 'socket': client_socket}
         login_history[username] = user_entry
         client_socket.send('#accepted Welcome to the intergalactic chat service!')
-        thread = threading.Thread(target=serve_client, args=(client_socket,))
+        thread = threading.Thread(target=serve_client, args=(client_socket, username))
         thread.daemon = True
         thread.start()
 
         # add to list of online users
         users_online.append(username)
+
+        # broadcast login notification
+        broadcast(username, '%s logged in' % username)
     else:
         blocked_login_attempts[username] = time.datetime.now()
         client_socket.send('#terminate Invalid Password. Your account has been blocked. ' +
@@ -149,6 +170,7 @@ def check_timeouts():
 
             if time_elapsed.seconds > TIMEOUT:
                 # close connection to timed out user
+                print 'TIMEOUT: kicking out ' + user
                 user_sock = login_history[user]['socket']
                 user_sock.send('#terminate timeout')
                 user_sock.close()
@@ -163,6 +185,6 @@ if __name__ == '__main__':
     else:
         # set variables
         SERVER_PORT = int(cmdArgs[1])
-        BLOCK_DURATION = cmdArgs[2]
+        BLOCK_DURATION = int(cmdArgs[2])
         TIMEOUT = int(cmdArgs[3])
         start_server()
