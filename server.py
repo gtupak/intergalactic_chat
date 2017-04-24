@@ -84,18 +84,37 @@ def send_info(usr, msg):
 
 
 def send_direct_msg(usr_from, usr_to, msg):
-    sock = login_history[usr_to]['socket']
+    if usr_to in blacklists:
+        blacklist = blacklists[usr_to]
+        if usr_from in blacklist:
+            send_info(usr_from, 'Your message could not be delivered as the recipient has blocked you.')
+            return
+
     send_info(usr_to, '%s: %s' % (usr_from, msg))
     return
 
 
-def broadcast(user_from, msg):
+def broadcast(user_from, msg, login_logout_timeout):
+    has_blocked_users = False
     for user in users_online:
         # do not broadcast to originated user
         if user == user_from:
             continue
 
+        if user in blacklists:
+            blacklist = blacklists[user]
+            if user_from in blacklist:
+                if not login_logout_timeout:
+                    has_blocked_users = True
+                continue
+
         send_info(user, '%s: %s' % (user_from, msg))
+
+    if has_blocked_users:
+        # make sure that user_from is still online (this could be a logout broadcast)
+        if user_from in users_online:
+            send_info(user_from, 'Your message could not be delivered to some recipients')
+
     return
 
 
@@ -140,6 +159,8 @@ def remove_from_blacklist(requester, user_to_unblock):
 
 
 def serve_client(client_socket, user):
+    global users_online
+
     while 1:
 
         message = client_socket.recv(1024)
@@ -149,9 +170,10 @@ def serve_client(client_socket, user):
 
         if message == 'logout':
             client_socket.send('#terminate client logs out')
-            users_online.remove(user)
             client_socket.close()
-            broadcast(user, '%s logged out' % user)
+            users_online.remove(user)
+
+            broadcast(user, '%s logged out' % user, True)
             break
 
         elif message == 'whoelse':
@@ -162,7 +184,7 @@ def serve_client(client_socket, user):
 
         elif message.split()[0] == 'broadcast':
             message = ' '.join(message.split()[1:])
-            broadcast(user, message)
+            broadcast(user, message, False)
 
         elif len(message.split()) > 2 and message.split()[0] == 'message':
             receiver = message.split()[1]
@@ -251,7 +273,7 @@ def accept_client(client_socket):
         users_online.append(username)
 
         # broadcast login notification
-        broadcast(username, '%s logged in' % username)
+        broadcast(username, '%s logged in' % username, True)
 
         # send offline messages
         if username in offline_msgs:
@@ -312,7 +334,7 @@ def check_timeouts():
                 user_sock.close()
 
                 users_online.remove(user)
-                broadcast(user, '%s was disconnected due to inactivity' % user)
+                broadcast(user, '%s was disconnected due to inactivity' % user, True)
 
 
 if __name__ == '__main__':
