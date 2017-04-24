@@ -14,7 +14,7 @@ from socket import error as socket_error
 
 
 credentials_filename = 'credentials.txt'
-login_history = {} # dictionary of login history and sockets: {'yoda': {'time': time, 'socket' socket}
+login_history = {} # dictionary of login history sockets and user activity: {'yoda': {'time': time, 'socket' socket, 'lastActive': time}}
 users_online = [] # list of users ie ['yoda', 'luke']
 
 # dictionary storing usernames of people blocked due of incorrect passwords
@@ -159,7 +159,7 @@ def remove_from_blacklist(requester, user_to_unblock):
 
 
 def serve_client(client_socket, user):
-    global users_online
+    global users_online, login_history
 
     while 1:
 
@@ -167,6 +167,9 @@ def serve_client(client_socket, user):
         if message == '':
             client_socket.close()
             break
+
+        # update user activity
+        login_history[user]['lastActive'] = time.datetime.now()
 
         if message == 'logout':
             client_socket.send('#terminate client logs out')
@@ -283,7 +286,7 @@ def accept_client(client_socket):
 
     elif accepted:
         # add user to login history
-        user_entry = {'time': time.datetime.now(), 'socket': client_socket}
+        user_entry = {'time': time.datetime.now(), 'socket': client_socket, 'lastActive': time.datetime.now()}
         login_history[username] = user_entry
         client_socket.send('#accepted Welcome to the intergalactic chat service!')
 
@@ -341,9 +344,9 @@ def check_timeouts():
     global users_online
     while 1:
         for user in users_online:
-            time_at_login = login_history[user]['time']
+            timeSinceActivity = login_history[user]['lastActive']
             time_now = time.datetime.now()
-            time_elapsed = time_now - time_at_login
+            time_elapsed = time_now - timeSinceActivity
 
             if time_elapsed.seconds > TIMEOUT:
                 # close connection to timed out user
@@ -352,7 +355,7 @@ def check_timeouts():
                 user_sock.close()
 
                 users_online.remove(user)
-                broadcast(user, '%s was disconnected due to inactivity' % user, True)
+                broadcast(user, '%s was disconnected due to inactivity.' % user, True)
 
 
 if __name__ == '__main__':
