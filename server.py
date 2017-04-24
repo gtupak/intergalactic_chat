@@ -26,6 +26,7 @@ creds_file = open(credentials_filename, 'r')
 creds_lines = creds_file.readlines()
 creds_lines = [line.translate(None, '\n') for line in creds_lines] # remove \n characters from credentials
 
+all_users = [line.split()[0] for line in creds_lines]
 
 def prompt_credentials(sock, username):
     accepted = False
@@ -57,8 +58,15 @@ def send_prompt(sock, msg):
     return
 
 
-def send_info(sock, msg):
+def send_info(usr, msg):
+    sock = login_history[usr]['socket']
     sock.send('#info %s' % msg)
+    return
+
+
+def send_direct_msg(usr_from, usr_to, msg):
+    sock = login_history[usr_to]['socket']
+    send_info(usr_to, '%s: %s' % (usr_from, msg))
     return
 
 
@@ -68,8 +76,7 @@ def broadcast(user_from, msg):
         if user == user_from:
             continue
 
-        sock = login_history[user]['socket']
-        send_info(sock, msg)
+        send_info(user, '%s: %s' % (user_from, msg))
     return
 
 
@@ -87,14 +94,27 @@ def serve_client(client_socket, user):
             client_socket.close()
             broadcast(user, '%s logged out' % user)
             break
+
         elif message == 'whoelse':
             for u_online in users_online:
                 if user == u_online:
                     continue
-                send_info(client_socket, u_online)
+                send_info(user, u_online)
+
         elif message.split()[0] == 'broadcast':
             message = ' '.join(message.split()[1:])
             broadcast(user, message)
+
+        elif len(message.split()) > 2 and message.split()[0] == 'message':
+            to_usr = message.split()[1]
+            if to_usr not in all_users:
+                send_info(user, 'User %s does not exist' % to_usr)
+                continue
+            elif to_usr == user:
+                send_info(user, 'Cannot send message to self.')
+                continue
+
+            send_direct_msg(user, to_usr, ' '.join(message.split()[2:]))
         else:
             client_socket.send('#info Echo: ' + message)
 
