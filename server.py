@@ -9,7 +9,7 @@ Server should the following in order:
 
 import sys, threading
 import datetime as time
-from socket import socket, AF_INET, SOCK_STREAM
+from socket import socket, AF_INET, SOCK_STREAM, SOL_SOCKET, SO_REUSEADDR
 from socket import error as socket_error
 
 
@@ -27,6 +27,16 @@ creds_lines = creds_file.readlines()
 creds_lines = [line.translate(None, '\n') for line in creds_lines] # remove \n characters from credentials
 
 all_users = [line.split()[0] for line in creds_lines]
+
+'''
+Dictionary to store offline messages. Structured as follows:
+{
+    <user1>: [msg1, msg2, msg3],
+    <user2>: [...]
+}
+'''
+offline_msgs = {}
+
 
 def prompt_credentials(sock, username):
     accepted = False
@@ -106,15 +116,23 @@ def serve_client(client_socket, user):
             broadcast(user, message)
 
         elif len(message.split()) > 2 and message.split()[0] == 'message':
-            to_usr = message.split()[1]
-            if to_usr not in all_users:
-                send_info(user, 'User %s does not exist' % to_usr)
+            receiver = message.split()[1]
+            if receiver not in all_users:
+                send_info(user, 'User %s does not exist' % receiver)
                 continue
-            elif to_usr == user:
+            elif receiver == user:
                 send_info(user, 'Cannot send message to self.')
                 continue
 
-            send_direct_msg(user, to_usr, ' '.join(message.split()[2:]))
+            # check if receiver is online
+            msg_to_send = ' '.join(message.split()[2:])
+            if receiver in users_online:
+                send_direct_msg(user, receiver, msg_to_send)
+            else:
+                if receiver in offline_msgs:
+                    offline_msgs[receiver].append('%s: %s' % (user, msg_to_send))
+                else:
+                    offline_msgs[receiver] = ['%s: %s' % (user,msg_to_send)]
         else:
             client_socket.send('#info Echo: ' + message)
 
@@ -142,20 +160,30 @@ def accept_client(client_socket):
         client_socket.send('#terminate Your account is blocked due to multiple login failures. ' +
                               'Please try again later')
         client_socket.close()
+
     elif accepted:
         # add user to login history
         user_entry = {'time': time.datetime.now(), 'socket': client_socket}
         login_history[username] = user_entry
         client_socket.send('#accepted Welcome to the intergalactic chat service!')
-        thread = threading.Thread(target=serve_client, args=(client_socket, username))
-        thread.daemon = True
-        thread.start()
 
         # add to list of online users
         users_online.append(username)
 
         # broadcast login notification
         broadcast(username, '%s logged in' % username)
+
+        # send offline messages
+        if username in offline_msgs:
+            for msg in offline_msgs[username]:
+                send_info(username, msg)
+            del offline_msgs[username]
+
+        # serve client
+        thread = threading.Thread(target=serve_client, args=(client_socket, username))
+        thread.daemon = True
+        thread.start()
+
     else:
         blocked_login_attempts[username] = time.datetime.now()
         client_socket.send('#terminate Invalid Password. Your account has been blocked. ' +
@@ -170,6 +198,7 @@ def start_server():
     timeout_thread.start()
 
     serverSocket = socket(AF_INET, SOCK_STREAM)
+    serverSocket.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
     try:
         serverSocket.bind(('', SERVER_PORT))
         serverSocket.listen(1)
