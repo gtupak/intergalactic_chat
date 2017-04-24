@@ -235,8 +235,26 @@ def serve_client(client_socket, user):
             else:
                 send_info(user, '%s user was not blocked.' % user_to_unblock)
 
+        elif len(message.split()) == 2 and message.split()[0] == 'whoelsesince':
+            try:
+                now = time.datetime.now()
+                timeSince = int(message.split()[1])
+                historyOfUsers = []
+                for login in login_history.keys():
+                    if login == user:
+                        continue
+
+                    loginTime = login_history[login]['time']
+                    interval = now - loginTime
+                    if interval.seconds <= timeSince:
+                        historyOfUsers.append(login)
+
+                send_info(user, 'Users logged in since %d seconds: %s' % (timeSince, ' '.join(historyOfUsers)))
+            except ValueError:
+                send_info(user, 'Bad command. Time has be to be an integer.')
+
         else:
-            client_socket.send('#info Echo: ' + message)
+            client_socket.send('#info Echo: ' + message) # TODO to delete
 
 
 def accept_client(client_socket):
