@@ -94,7 +94,7 @@ if __name__ == '__main__':
         server_ip = cmdArgs[1]
         server_port = int(cmdArgs[2])
 
-        # start server
+        # start client
         sock = socket(AF_INET, SOCK_STREAM)
         try:
             sock.connect((server_ip, server_port))

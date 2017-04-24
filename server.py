@@ -37,6 +37,15 @@ Dictionary to store offline messages. Structured as follows:
 '''
 offline_msgs = {}
 
+'''
+Dictionary to store a blacklist. Structured as follows:
+{
+    <user1>: [blocked_user1, blocked_user2],
+    <user2>: [...]
+}
+'''
+blacklists = {}
+
 
 def prompt_credentials(sock, username):
     accepted = False
@@ -90,6 +99,46 @@ def broadcast(user_from, msg):
     return
 
 
+def is_blocked_by(u_requester, u_query):
+    if u_requester not in blacklists:
+        return False
+
+    users_blocked = blacklists[u_requester]
+    if u_query in users_blocked:
+        return True
+
+    return False
+
+
+def add_to_blacklist(requester, user_to_block):
+    global blacklists
+
+    if requester in blacklists:
+        blacklist = blacklists[requester]
+        if user_to_block not in blacklist:
+            blacklist.append(user_to_block)
+            blacklists[requester] = blacklist
+    else:
+        blacklist = [user_to_block]
+        blacklists[requester] = blacklist
+    return
+
+
+def remove_from_blacklist(requester, user_to_unblock):
+    global blacklists
+    unblocked = False
+
+    if requester in blacklists:
+        blacklist = blacklists[requester]
+        if user_to_unblock in blacklist:
+            index = blacklist.index(user_to_unblock)
+            del blacklist[index]
+            blacklists[requester] = blacklist
+            unblocked = True
+
+    return unblocked
+
+
 def serve_client(client_socket, user):
     while 1:
 
@@ -133,6 +182,37 @@ def serve_client(client_socket, user):
                     offline_msgs[receiver].append('%s: %s' % (user, msg_to_send))
                 else:
                     offline_msgs[receiver] = ['%s: %s' % (user,msg_to_send)]
+
+        elif len(message.split()) == 2 and message.split()[0] == 'block':
+            # check if user to block exists
+            user_to_block = message.split()[1]
+            if user_to_block not in all_users:
+                send_info(user, 'Username %s could not be found.' % user_to_block)
+                continue
+
+            elif user_to_block == user:
+                send_info(user, 'Cannot block self.')
+                continue
+
+            add_to_blacklist(user, user_to_block)
+            send_info(user, '%s is blocked.' % user_to_block)
+
+        elif len(message.split()) == 2 and message.split()[0] == 'unblock':
+            user_to_unblock = message.split()[1]
+            if user_to_unblock not in all_users:
+                send_info(user, '%s does not exist.')
+                continue
+
+            if user_to_unblock == user:
+                send_info(user, 'Cannot unblock self.')
+                continue
+
+            unblocked = remove_from_blacklist(user, user_to_unblock)
+            if unblocked:
+                send_info(user, '%s has been unblocked.' % user_to_unblock)
+            else:
+                send_info(user, '%s user was not blocked.' % user_to_unblock)
+
         else:
             client_socket.send('#info Echo: ' + message)
 
