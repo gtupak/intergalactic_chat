@@ -12,10 +12,9 @@ import datetime as time
 from socket import socket, AF_INET, SOCK_STREAM, SOL_SOCKET, SO_REUSEADDR
 from socket import error as socket_error
 
-
 credentials_filename = 'credentials.txt'
-login_history = {} # dictionary of login history sockets and user activity: {'yoda': {'time': time, 'socket' socket, 'lastActive': time}}
-users_online = [] # list of users ie ['yoda', 'luke']
+login_history = {}  # dictionary of login history sockets and user activity: {'yoda': {'time': time, 'socket' socket, 'lastActive': time}}
+users_online = []  # list of users ie ['yoda', 'luke']
 
 # dictionary storing usernames of people blocked due of incorrect passwords
 # stored as 'username': 'date_when_blocked'
@@ -26,7 +25,7 @@ blocked_IPs = {}
 # load credentials
 creds_file = open(credentials_filename, 'r')
 creds_lines = creds_file.readlines()
-creds_lines = [line.translate(None, '\n') for line in creds_lines] # remove \n characters from credentials
+creds_lines = [line.translate(None, '\n') for line in creds_lines]  # remove \n characters from credentials
 
 all_users = [line.split()[0] for line in creds_lines]
 
@@ -52,9 +51,7 @@ blacklists = {}
 def prompt_credentials(sock, username):
     accepted = False
     blocked = False
-
-    send_prompt(sock, 'Password:')
-    password = sock.recv(1024)
+    tries = 0
 
     # check if blocked
     if username in blocked_login_attempts:
@@ -67,21 +64,41 @@ def prompt_credentials(sock, username):
 
     # check credentials
     if not blocked:
-        creds = '%s %s' % (username, password)
-        if creds in creds_lines:
-            accepted = True
+        send_prompt(sock, 'Password: ')
+
+        while tries < 3 and not accepted:
+            password = sock.recv(1024)
+
+            creds = '%s %s' % (username, password)
+            if creds in creds_lines:
+                accepted = True
+            elif tries + 1 < 3:
+                send_prompt(sock, 'Invalid Password. Please try again ')
+
+            tries += 1
+
+    # while tries < 3:
+    #     accepted, blocked = prompt_credentials(client_socket, username)
+    #     if blocked:
+    #         break
+    #     if accepted:
+    #         break
+    #     else:
+    #         if tries + 1 != 3:
+    #             client_socket.send('#info Invalid Password. Please try again ')
+    #         tries += 1
 
     return accepted, blocked
 
 
 def send_prompt(sock, msg):
-    sock.send('#prompt %s' % msg)
+    sock.send('#prompt %s ' % msg)
     return
 
 
 def send_info(usr, msg):
     sock = login_history[usr]['socket']
-    sock.send('#info %s' % msg)
+    sock.send('#info %s ' % msg)
     return
 
 
@@ -89,10 +106,10 @@ def send_direct_msg(usr_from, usr_to, msg):
     if usr_to in blacklists:
         blacklist = blacklists[usr_to]
         if usr_from in blacklist:
-            send_info(usr_from, 'Your message could not be delivered as the recipient has blocked you.')
+            send_info(usr_from, 'Your message could not be delivered as the recipient has blocked you. ')
             return
 
-    send_info(usr_to, '%s: %s' % (usr_from, msg))
+    send_info(usr_to, '%s: %s ' % (usr_from, msg))
     return
 
 
@@ -110,12 +127,15 @@ def broadcast(user_from, msg, login_logout_timeout):
                     has_blocked_users = True
                 continue
 
-        send_info(user, '%s: %s' % (user_from, msg))
+        if login_logout_timeout:
+            send_info(user, '%s' % msg)
+        else:
+            send_info(user, '%s: %s ' % (user_from, msg))
 
     if has_blocked_users:
         # make sure that user_from is still online (this could be a logout broadcast)
         if user_from in users_online:
-            send_info(user_from, 'Your message could not be delivered to some recipients')
+            send_info(user_from, 'Your message could not be delivered to some recipients ')
 
     return
 
@@ -174,18 +194,25 @@ def serve_client(client_socket, user):
         login_history[user]['lastActive'] = time.datetime.now()
 
         if message == 'logout':
-            client_socket.send('#terminate client logs out')
+            client_socket.send('#terminate client logs out ')
             client_socket.close()
             users_online.remove(user)
 
-            broadcast(user, '%s logged out' % user, True)
+            broadcast(user, '%s logged out ' % user, True)
             break
 
         elif message == 'whoelse':
+            if len(users_online) - 1 == 0:  # substract 1 to not count the requester in this list
+                send_info(user, 'You are alone in the chat room. ')
+                continue
+
+            whoElseOnline = []
             for u_online in users_online:
                 if user == u_online:
                     continue
-                send_info(user, u_online)
+                whoElseOnline.append(u_online)
+
+            send_info(user, 'Online users: ' + ', '.join(whoElseOnline))
 
         elif message.split()[0] == 'broadcast':
             message = ' '.join(message.split()[1:])
@@ -194,10 +221,10 @@ def serve_client(client_socket, user):
         elif len(message.split()) > 2 and message.split()[0] == 'message':
             receiver = message.split()[1]
             if receiver not in all_users:
-                send_info(user, 'User %s does not exist' % receiver)
+                send_info(user, 'User %s does not exist ' % receiver)
                 continue
             elif receiver == user:
-                send_info(user, 'Cannot send message to self.')
+                send_info(user, 'Cannot send message to self. ')
                 continue
 
             # check if receiver is online
@@ -206,39 +233,39 @@ def serve_client(client_socket, user):
                 send_direct_msg(user, receiver, msg_to_send)
             else:
                 if receiver in offline_msgs:
-                    offline_msgs[receiver].append('%s: %s' % (user, msg_to_send))
+                    offline_msgs[receiver].append('%s: %s ' % (user, msg_to_send))
                 else:
-                    offline_msgs[receiver] = ['%s: %s' % (user,msg_to_send)]
+                    offline_msgs[receiver] = ['%s: %s ' % (user, msg_to_send)]
 
         elif len(message.split()) == 2 and message.split()[0] == 'block':
             # check if user to block exists
             user_to_block = message.split()[1]
             if user_to_block not in all_users:
-                send_info(user, 'Username %s could not be found.' % user_to_block)
+                send_info(user, 'Username %s could not be found. ' % user_to_block)
                 continue
 
             elif user_to_block == user:
-                send_info(user, 'Cannot block self.')
+                send_info(user, 'Cannot block self. ')
                 continue
 
             add_to_blacklist(user, user_to_block)
-            send_info(user, '%s is blocked.' % user_to_block)
+            send_info(user, '%s is blocked. ' % user_to_block)
 
         elif len(message.split()) == 2 and message.split()[0] == 'unblock':
             user_to_unblock = message.split()[1]
             if user_to_unblock not in all_users:
-                send_info(user, '%s does not exist.')
+                send_info(user, '%s does not exist. ')
                 continue
 
             if user_to_unblock == user:
-                send_info(user, 'Cannot unblock self.')
+                send_info(user, 'Cannot unblock self. ')
                 continue
 
             unblocked = remove_from_blacklist(user, user_to_unblock)
             if unblocked:
-                send_info(user, '%s has been unblocked.' % user_to_unblock)
+                send_info(user, '%s has been unblocked. ' % user_to_unblock)
             else:
-                send_info(user, '%s user was not blocked.' % user_to_unblock)
+                send_info(user, 'User %s was not blocked. ' % user_to_unblock)
 
         elif len(message.split()) == 2 and message.split()[0] == 'whoelsesince':
             try:
@@ -254,12 +281,12 @@ def serve_client(client_socket, user):
                     if interval.seconds <= timeSince:
                         historyOfUsers.append(login)
 
-                send_info(user, 'Users logged in since %d seconds: %s' % (timeSince, ' '.join(historyOfUsers)))
+                send_info(user, 'Users logged in since %d seconds: %s ' % (timeSince, ' '.join(historyOfUsers)))
             except ValueError:
-                send_info(user, 'Bad command. Time has be to be an integer.')
+                send_info(user, 'Bad command. Time has be to be an integer. ')
 
         else:
-            client_socket.send('#info Echo: ' + message) # TODO to delete
+            client_socket.send('#info Error. Bad command. ')
 
 
 def accept_client(client_socket):
@@ -276,7 +303,7 @@ def accept_client(client_socket):
         if interval.seconds > BLOCK_DURATION:
             del blocked_IPs[client_socket.getpeername()[0]]
         else:
-            client_socket.send('#terminate Your IP has been blocked for entering an invalid username. Try again later')
+            client_socket.send('#terminate Your IP has been blocked for entering an invalid username. Try again later. ')
             client_socket.close()
             return
 
@@ -285,38 +312,38 @@ def accept_client(client_socket):
     username = client_socket.recv(1024)
 
     if username in users_online:
-        client_socket.send('#terminate Access denied. User is already logged in.')
+        client_socket.send('#terminate Access denied. User is already logged in. ')
         client_socket.close()
         return
 
     if username not in all_users:
         blocked_IPs[client_socket.getpeername()[0]] = time.datetime.now()
-        client_socket.send('#terminate Invalid username. Your IP address has been blocked for %d seconds.'
+        client_socket.send('#terminate Invalid username. Your IP address has been blocked for %d seconds. '
                            % BLOCK_DURATION)
         client_socket.close()
         return
 
-    while tries < 3:
-        accepted, blocked = prompt_credentials(client_socket, username)
-        if blocked:
-            break
-        if accepted:
-            break
-        else:
-            if tries + 1 != 3:
-                client_socket.send('#info Invalid Password. Please try again')
-            tries += 1
+    # while tries < 3:
+    accepted, blocked = prompt_credentials(client_socket, username)
+    # if blocked:
+    #     break
+    # if accepted:
+    #     break
+    # else:
+    #     if tries + 1 != 3:
+    #         client_socket.send('#info Invalid Password. Please try again ')
+    #     tries += 1
 
     if blocked:
         client_socket.send('#terminate Your account is blocked due to multiple login failures. ' +
-                              'Please try again later')
+                           'Please try again later. ')
         client_socket.close()
 
     elif accepted:
         # add user to login history
         user_entry = {'time': time.datetime.now(), 'socket': client_socket, 'lastActive': time.datetime.now()}
         login_history[username] = user_entry
-        client_socket.send('#accepted Welcome to the intergalactic chat service!')
+        client_socket.send('#accepted Welcome to the intergalactic chat service! ')
 
         # add to list of online users
         users_online.append(username)
@@ -338,7 +365,7 @@ def accept_client(client_socket):
     else:
         blocked_login_attempts[username] = time.datetime.now()
         client_socket.send('#terminate Invalid Password. Your account has been blocked. ' +
-                              'Please try again later')
+                           'Please try again later ')
         client_socket.close()
 
 
