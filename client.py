@@ -27,12 +27,12 @@ def listen_for_messages():
                 # empty string most likely means that the server has shut down
                 raise KeyboardInterrupt
 
-            server_msg = server_msg.split()
+            server_msg = server_msg.split(' ')
             # command = server_msg[0]
 
             toPrint = ''
             for word in server_msg:
-                if word[0] == '#':
+                if word != '' and word[0] == '#':
                     if word == '#prompt':
                         usr_input = raw_input('> %s\n' % ' '.join(server_msg[1:]))
                         sock.send(usr_input)

@@ -343,7 +343,6 @@ def accept_client(client_socket):
         # add user to login history
         user_entry = {'time': time.datetime.now(), 'socket': client_socket, 'lastActive': time.datetime.now()}
         login_history[username] = user_entry
-        client_socket.send('#accepted Welcome to the intergalactic chat service! ')
 
         # add to list of online users
         users_online.append(username)
@@ -352,10 +351,19 @@ def accept_client(client_socket):
         broadcast(username, '%s logged in' % username, True)
 
         # send offline messages
+        offlineMsgToSend = ''
         if username in offline_msgs:
+            offlineMsgToSend += '\n'
+            i = 0
             for msg in offline_msgs[username]:
-                send_info(username, msg)
+                # send_info(username, msg)
+                offlineMsgToSend += '> ' + msg
+                if i + 1 < len(offline_msgs[username]):
+                    offlineMsgToSend += '\n'
+                i += 1
             del offline_msgs[username]
+
+        client_socket.send('#accepted Welcome to the intergalactic chat service!' + offlineMsgToSend)
 
         # serve client
         thread = threading.Thread(target=serve_client, args=(client_socket, username))
