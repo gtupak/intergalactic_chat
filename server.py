@@ -21,6 +21,8 @@ users_online = [] # list of users ie ['yoda', 'luke']
 # stored as 'username': 'date_when_blocked'
 blocked_login_attempts = {}
 
+blocked_IPs = {}
+
 # load credentials
 creds_file = open(credentials_filename, 'r')
 creds_lines = creds_file.readlines()
@@ -262,12 +264,38 @@ def serve_client(client_socket, user):
 
 def accept_client(client_socket):
     global login_history, users_online
-    # prompt for credentials
     tries = 0
     accepted = False
     blocked = False
+
+    # check if IP is blocked
+    if client_socket.getpeername()[0] in blocked_IPs:
+        now = time.datetime.now()
+        timeAtBlock = blocked_IPs[client_socket.getpeername()[0]]
+        interval = now - timeAtBlock
+        if interval.seconds > BLOCK_DURATION:
+            del blocked_IPs[client_socket.getpeername()[0]]
+        else:
+            client_socket.send('#terminate Your IP has been blocked for entering an invalid username. Try again later')
+            client_socket.close()
+            return
+
+    # prompt for credentials
     send_prompt(client_socket, 'Username:')
     username = client_socket.recv(1024)
+
+    if username in users_online:
+        client_socket.send('#terminate Access denied. User is already logged in.')
+        client_socket.close()
+        return
+
+    if username not in all_users:
+        blocked_IPs[client_socket.getpeername()[0]] = time.datetime.now()
+        client_socket.send('#terminate Invalid username. Your IP address has been blocked for %d seconds.'
+                           % BLOCK_DURATION)
+        client_socket.close()
+        return
+
     while tries < 3:
         accepted, blocked = prompt_credentials(client_socket, username)
         if blocked:
