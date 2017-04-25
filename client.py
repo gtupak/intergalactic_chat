@@ -28,7 +28,6 @@ def listen_for_messages():
                 raise KeyboardInterrupt
 
             server_msg = server_msg.split(' ')
-            # command = server_msg[0]
 
             toPrint = ''
             for word in server_msg:
@@ -55,10 +54,8 @@ def listen_for_messages():
 
                     elif word == '#info':
                         toPrint += '> '
-                        # print '> %s' % ' '.join(server_msg[1:])
 
                     else:
-                        # toPrint += word + ' '
                         print '> %s\nClosing socket' % ' '.join(server_msg)
                         close_connection()
                         break

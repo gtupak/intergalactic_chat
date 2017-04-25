@@ -13,13 +13,27 @@ from socket import socket, AF_INET, SOCK_STREAM, SOL_SOCKET, SO_REUSEADDR
 from socket import error as socket_error
 
 credentials_filename = 'credentials.txt'
-login_history = {}  # dictionary of login history sockets and user activity: {'yoda': {'time': time, 'socket' socket, 'lastActive': time}}
-users_online = []  # list of users ie ['yoda', 'luke']
 
-# dictionary storing usernames of people blocked due of incorrect passwords
-# stored as 'username': 'date_when_blocked'
+'''
+Dictionary of login history sockets and user activity. Structured like so:
+{
+    'yoda': {
+        'time': time, 
+        'socket' socket, 
+        'lastActive': time
+    }
+}
+'''
+login_history = {}
+
+# list to keep track of online users
+users_online = []
+
+# dictionary storing user names of people blocked due of incorrect passwords
+# key: username, value: date_when_blocked
 blocked_login_attempts = {}
 
+# dictionary storing the blocked IP addresses as keys and the time when they were blocked as value
 blocked_IPs = {}
 
 # load credentials
@@ -76,17 +90,6 @@ def prompt_credentials(sock, username):
                 send_prompt(sock, 'Invalid Password. Please try again ')
 
             tries += 1
-
-    # while tries < 3:
-    #     accepted, blocked = prompt_credentials(client_socket, username)
-    #     if blocked:
-    #         break
-    #     if accepted:
-    #         break
-    #     else:
-    #         if tries + 1 != 3:
-    #             client_socket.send('#info Invalid Password. Please try again ')
-    #         tries += 1
 
     return accepted, blocked
 
@@ -202,7 +205,7 @@ def serve_client(client_socket, user):
             break
 
         elif message == 'whoelse':
-            if len(users_online) - 1 == 0:  # substract 1 to not count the requester in this list
+            if len(users_online) - 1 == 0:  # subtract 1 to not count the requester in this list
                 send_info(user, 'You are alone in the chat room. ')
                 continue
 
@@ -291,9 +294,6 @@ def serve_client(client_socket, user):
 
 def accept_client(client_socket):
     global login_history, users_online
-    tries = 0
-    accepted = False
-    blocked = False
 
     # check if IP is blocked
     if client_socket.getpeername()[0] in blocked_IPs:
@@ -323,16 +323,7 @@ def accept_client(client_socket):
         client_socket.close()
         return
 
-    # while tries < 3:
     accepted, blocked = prompt_credentials(client_socket, username)
-    # if blocked:
-    #     break
-    # if accepted:
-    #     break
-    # else:
-    #     if tries + 1 != 3:
-    #         client_socket.send('#info Invalid Password. Please try again ')
-    #     tries += 1
 
     if blocked:
         client_socket.send('#terminate Your account is blocked due to multiple login failures. ' +
@@ -356,7 +347,6 @@ def accept_client(client_socket):
             offlineMsgToSend += '\n'
             i = 0
             for msg in offline_msgs[username]:
-                # send_info(username, msg)
                 offlineMsgToSend += '> ' + msg
                 if i + 1 < len(offline_msgs[username]):
                     offlineMsgToSend += '\n'
